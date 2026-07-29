@@ -1,0 +1,264 @@
+{% extends "signer/base.html" %}
+{% block title %}Positions — PDF Digital Sign{% endblock %}
+{% block lead %}Step 2: click each page preview to place the signature (or type X / Y). Different page = different place.{% endblock %}
+
+{% block extra_css %}
+<style>
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .page-list { display: flex; flex-direction: column; gap: 8px; }
+  .page-tab {
+    text-align: left; border: 1px solid var(--line); background: #fff;
+    border-radius: 8px; padding: 10px 12px; cursor: pointer; font: inherit;
+  }
+  .page-tab.active { border-color: var(--accent); box-shadow: 0 0 0 2px #cfe8dc; }
+  .page-tab small { display: block; color: var(--muted); margin-top: 2px; }
+  .preview-wrap {
+    border: 1px dashed var(--line); border-radius: 10px; background: #f7f9fb;
+    padding: 12px; overflow: auto; text-align: center; position: relative;
+  }
+  .canvas-box { display: inline-block; position: relative; max-width: 100%; }
+  .canvas-box canvas { display: block; max-width: 100%; height: auto; box-shadow: 0 4px 16px rgba(0,0,0,.08); cursor: crosshair; }
+  .sig-marker {
+    position: absolute; border: 2px solid var(--accent); background: rgba(11,110,79,.15);
+    pointer-events: none; box-sizing: border-box;
+  }
+  .hint { color: var(--muted); font-size: .9rem; margin: 0 0 12px; }
+  .coords { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  @media (max-width: 700px) { .coords { grid-template-columns: 1fr 1fr; } }
+  .check-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .check-row input { width: auto; }
+  .meta { font-size: .85rem; color: var(--muted); margin-bottom: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="panel" style="margin-bottom:14px;">
+  <div class="meta">
+    Sample PDF used for layout ·
+    Signing <strong>{{ job.pdfs_to_sign|length }}</strong> PDF(s) ·
+    Output: <code>{{ job.output_path }}</code>
+  </div>
+  <p class="hint">
+    Click on a page where you want the signature bottom-left corner.
+    Coordinates use PDF space (origin = bottom-left). Enable only the pages you want signed.
+  </p>
+
+  <form method="post" id="place-form">
+    {% csrf_token %}
+    <div class="layout">
+      <div class="page-list" id="page-tabs">
+        {% for p in defaults %}
+          <button type="button" class="page-tab {% if forloop.first %}active{% endif %}" data-index="{{ p.index }}">
+            {{ p.label }}
+            <small id="tab-summary-{{ p.index }}">
+              {% if p.enabled %}On · x={{ p.x|floatformat:0 }} y={{ p.y|floatformat:0 }}{% else %}Skipped{% endif %}
+            </small>
+          </button>
+          <input type="hidden" name="x_{{ p.index }}" id="x_{{ p.index }}" value="{{ p.x }}">
+          <input type="hidden" name="y_{{ p.index }}" id="y_{{ p.index }}" value="{{ p.y }}">
+          <input type="hidden" name="width_{{ p.index }}" id="width_{{ p.index }}" value="{{ p.sig_width }}">
+          <input type="checkbox" name="enabled_{{ p.index }}" id="enabled_{{ p.index }}" {% if p.enabled %}checked{% endif %} style="display:none">
+        {% endfor %}
+      </div>
+
+      <div>
+        <div class="preview-wrap">
+          <div class="canvas-box" id="canvas-box">
+            <canvas id="pdf-canvas"></canvas>
+            <div class="sig-marker" id="sig-marker"></div>
+          </div>
+        </div>
+
+        <div class="check-row">
+          <input type="checkbox" id="enabled_ui">
+          <label for="enabled_ui" style="margin:0;font-weight:600;">Place signature on this page</label>
+        </div>
+
+        <div class="coords">
+          <div class="field">
+            <label for="ui_x">X (pt)</label>
+            <input type="number" step="0.1" id="ui_x">
+          </div>
+          <div class="field">
+            <label for="ui_y">Y (pt)</label>
+            <input type="number" step="0.1" id="ui_y">
+          </div>
+          <div class="field">
+            <label for="ui_w">Width (pt)</label>
+            <input type="number" step="0.1" id="ui_w" min="40" max="500">
+          </div>
+          <div class="field">
+            <label>Page size</label>
+            <input type="text" id="ui_size" readonly>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:18px;">
+      <button class="btn" type="submit">Sign PDFs &amp; save to output path</button>
+      <a class="btn secondary" href="{% url 'reset' %}">Start over</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function () {
+  var pdfUrl = "{{ job.sample_url|escapejs }}";
+  var sigUrl = "{{ job.signature_url|escapejs }}";
+  var pages = {{ pages_json|safe }};
+  var state = {{ defaults_json|safe }};
+  var current = 0;
+  var pdfDoc = null;
+  var renderScale = 1.2;
+  var sigAspect = 0.4;
+  var canvas = document.getElementById("pdf-canvas");
+  var marker = document.getElementById("sig-marker");
+  var box = document.getElementById("canvas-box");
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  var img = new Image();
+  img.onload = function () {
+    if (img.width) sigAspect = img.height / img.width;
+  };
+  img.src = sigUrl;
+
+  function pageState(i) {
+    for (var n = 0; n < state.length; n++) {
+      if (state[n].index === i) return state[n];
+    }
+    return null;
+  }
+
+  function syncHidden(i) {
+    var s = pageState(i);
+    document.getElementById("x_" + i).value = s.x;
+    document.getElementById("y_" + i).value = s.y;
+    document.getElementById("width_" + i).value = s.sig_width;
+    document.getElementById("enabled_" + i).checked = !!s.enabled;
+    var summary = document.getElementById("tab-summary-" + i);
+    if (summary) {
+      summary.textContent = s.enabled
+        ? ("On · x=" + Math.round(s.x) + " y=" + Math.round(s.y))
+        : "Skipped";
+    }
+  }
+
+  function syncUI() {
+    var s = pageState(current);
+    var p = pages[current];
+    document.getElementById("enabled_ui").checked = !!s.enabled;
+    document.getElementById("ui_x").value = Number(s.x).toFixed(1);
+    document.getElementById("ui_y").value = Number(s.y).toFixed(1);
+    document.getElementById("ui_w").value = Number(s.sig_width).toFixed(1);
+    document.getElementById("ui_size").value =
+      Math.round(p.width) + " × " + Math.round(p.height) + " pt";
+    updateMarker();
+  }
+
+  function updateMarker() {
+    var s = pageState(current);
+    var p = pages[current];
+    if (!s.enabled || !canvas.width) {
+      marker.style.display = "none";
+      return;
+    }
+    var dispW = canvas.clientWidth;
+    var dispH = canvas.clientHeight;
+    var sx = dispW / p.width;
+    var sy = dispH / p.height;
+    var sigH = s.sig_width * sigAspect;
+    // PDF y is from bottom; CSS top is from top
+    var left = s.x * sx;
+    var top = (p.height - s.y - sigH) * sy;
+    marker.style.display = "block";
+    marker.style.left = left + "px";
+    marker.style.top = top + "px";
+    marker.style.width = (s.sig_width * sx) + "px";
+    marker.style.height = (sigH * sy) + "px";
+  }
+
+  function renderPage(num) {
+    return pdfDoc.getPage(num + 1).then(function (page) {
+      var viewport = page.getViewport({ scale: renderScale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      return page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise;
+    }).then(function () {
+      syncUI();
+    });
+  }
+
+  function selectPage(i) {
+    current = i;
+    document.querySelectorAll(".page-tab").forEach(function (el) {
+      el.classList.toggle("active", Number(el.getAttribute("data-index")) === i);
+    });
+    renderPage(i);
+  }
+
+  document.querySelectorAll(".page-tab").forEach(function (el) {
+    el.addEventListener("click", function () {
+      selectPage(Number(el.getAttribute("data-index")));
+    });
+  });
+
+  canvas.addEventListener("click", function (e) {
+    var s = pageState(current);
+    var p = pages[current];
+    var rect = canvas.getBoundingClientRect();
+    var clickX = ((e.clientX - rect.left) / rect.width) * p.width;
+    var clickYFromTop = ((e.clientY - rect.top) / rect.height) * p.height;
+    var sigH = s.sig_width * sigAspect;
+    // Click = bottom-left corner of the signature (PDF origin is bottom-left)
+    s.x = Math.max(0, Math.min(p.width - s.sig_width, clickX));
+    s.y = Math.max(0, Math.min(p.height - sigH, p.height - clickYFromTop));
+    s.enabled = true;
+    syncHidden(current);
+    syncUI();
+  });
+
+  document.getElementById("enabled_ui").addEventListener("change", function (e) {
+    pageState(current).enabled = e.target.checked;
+    syncHidden(current);
+    updateMarker();
+  });
+
+  ["ui_x", "ui_y", "ui_w"].forEach(function (id) {
+    document.getElementById(id).addEventListener("change", function () {
+      var s = pageState(current);
+      s.x = parseFloat(document.getElementById("ui_x").value) || 0;
+      s.y = parseFloat(document.getElementById("ui_y").value) || 0;
+      s.sig_width = parseFloat(document.getElementById("ui_w").value) || 150;
+      syncHidden(current);
+      updateMarker();
+    });
+  });
+
+  window.addEventListener("resize", updateMarker);
+
+  document.getElementById("place-form").addEventListener("submit", function () {
+    state.forEach(function (s) { syncHidden(s.index); });
+  });
+
+  pdfjsLib.getDocument(pdfUrl).promise.then(function (doc) {
+    pdfDoc = doc;
+    selectPage(0);
+  }).catch(function (err) {
+    box.innerHTML = "<p style='color:#8a1f11'>Could not load PDF preview: " + err.message + "</p>";
+  });
+})();
+</script>
+{% endblock %}

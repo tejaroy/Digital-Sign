@@ -1,0 +1,15 @@
+*.pyc
+__pycache__/
+*.pyo
+db.sqlite3
+.env
+.venv/
+venv/
+media/input/*
+media/output/*
+media/jobs/
+!media/input/.gitkeep
+!media/output/.gitkeep
+*.log
+.DS_Store
+*accessKeys*.csv

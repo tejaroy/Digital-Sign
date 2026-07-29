@@ -1,0 +1,59 @@
+{% extends "signer/base.html" %}
+{% block title %}Setup — PDF Digital Sign{% endblock %}
+{% block lead %}Step 1: upload signature &amp; sample PDF, set input and output paths.{% endblock %}
+{% block content %}
+<div class="panel">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if form.non_field_errors %}{{ form.non_field_errors }}{% endif %}
+
+    <div class="section-title">Signature</div>
+    <div class="row">
+      <div class="field">
+        <label for="{{ form.signature.id_for_label }}">{{ form.signature.label }}</label>
+        {{ form.signature }}
+        <span class="help">{{ form.signature.help_text }}</span>
+        {{ form.signature.errors }}
+      </div>
+      <div class="field">
+        <label for="{{ form.signature_path.id_for_label }}">{{ form.signature_path.label }}</label>
+        {{ form.signature_path }}
+        <span class="help">{{ form.signature_path.help_text }}</span>
+        {{ form.signature_path.errors }}
+      </div>
+    </div>
+
+    <div class="section-title">PDF source</div>
+    <div class="field">
+      <label for="{{ form.sample_pdf.id_for_label }}">{{ form.sample_pdf.label }}</label>
+      {{ form.sample_pdf }}
+      <span class="help">{{ form.sample_pdf.help_text }}</span>
+      {{ form.sample_pdf.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.extra_pdfs.id_for_label }}">{{ form.extra_pdfs.label }}</label>
+      {{ form.extra_pdfs }}
+      <span class="help">{{ form.extra_pdfs.help_text }}</span>
+      {{ form.extra_pdfs.errors }}
+    </div>
+    <div class="field">
+      <label for="{{ form.input_path.id_for_label }}">{{ form.input_path.label }}</label>
+      {{ form.input_path }}
+      <span class="help">{{ form.input_path.help_text }}</span>
+      {{ form.input_path.errors }}
+    </div>
+
+    <div class="section-title">Output</div>
+    <div class="field">
+      <label for="{{ form.output_path.id_for_label }}">{{ form.output_path.label }}</label>
+      {{ form.output_path }}
+      <span class="help">{{ form.output_path.help_text }}</span>
+      {{ form.output_path.errors }}
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">Next: set positions on each page</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

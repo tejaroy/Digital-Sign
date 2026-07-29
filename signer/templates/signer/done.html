@@ -1,0 +1,19 @@
+{% extends "signer/base.html" %}
+{% block title %}Done — PDF Digital Sign{% endblock %}
+{% block lead %}Step 3: signed files are ready in your output folder.{% endblock %}
+{% block content %}
+<div class="panel">
+  <p style="margin-top:0;">
+    Signed <strong>{{ count }}</strong> PDF(s) into
+    <code>{{ output_path }}</code>
+  </p>
+  <ul>
+    {% for path in results %}
+      <li><code>{{ path }}</code></li>
+    {% endfor %}
+  </ul>
+  <div class="actions">
+    <a class="btn" href="{% url 'home' %}">Sign more PDFs</a>
+  </div>
+</div>
+{% endblock %}

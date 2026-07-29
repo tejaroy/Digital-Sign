@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PDF Digital Sign{% endblock %}</title>
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5c6b7a;
+      --line: #d8e0e8;
+      --bg: #eef2f6;
+      --card: #ffffff;
+      --accent: #0b6e4f;
+      --accent-hover: #095c42;
+      --warn-bg: #fff4e5;
+      --warn-ink: #8a5a00;
+      --err-bg: #fdecea;
+      --err-ink: #8a1f11;
+      --ok-bg: #e8f5ef;
+      --ok-ink: #0b6e4f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1000px 420px at 0% -10%, #d5ebe3 0%, transparent 55%),
+        radial-gradient(800px 360px at 100% 0%, #d7e4f2 0%, transparent 50%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 36px 18px 64px; }
+    h1 { margin: 0 0 6px; font-size: 1.75rem; letter-spacing: -0.02em; }
+    .topbar {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap; margin-bottom: 4px;
+    }
+    .nav { display: flex; gap: 10px; flex-wrap: wrap; }
+    .nav a {
+      text-decoration: none; color: var(--accent); font-weight: 600;
+      font-size: .92rem; padding: 8px 12px; border-radius: 8px;
+      background: #e8f5ef; border: 1px solid #cfe8dc;
+    }
+    .nav a:hover { background: #d9efe4; }
+    .lead { margin: 0 0 22px; color: var(--muted); line-height: 1.5; }
+    .doc-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    .doc-table th, .doc-table td {
+      text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    .doc-table th { color: var(--muted); font-weight: 600; font-size: .82rem; }
+    .doc-table a { color: var(--accent); font-weight: 600; text-decoration: none; }
+    .doc-table a:hover { text-decoration: underline; }
+    .name-cell { word-break: break-all; }
+    .steps {
+      display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap;
+    }
+    .steps span {
+      padding: 6px 12px; border-radius: 999px; font-size: 0.85rem;
+      background: #e2e8ef; color: var(--muted); font-weight: 600;
+    }
+    .steps .active { background: var(--accent); color: #fff; }
+    .steps .done { background: #cfe8dc; color: var(--ok-ink); }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 28px rgba(26,35,50,.06);
+    }
+    .messages { list-style: none; padding: 0; margin: 0 0 14px; }
+    .messages li {
+      padding: 10px 12px; border-radius: 8px; margin-bottom: 8px; font-size: .92rem;
+    }
+    .messages .error { background: var(--err-bg); color: var(--err-ink); }
+    .messages .warning { background: var(--warn-bg); color: var(--warn-ink); }
+    .messages .success { background: var(--ok-bg); color: var(--ok-ink); }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: .92rem; }
+    .field { margin-bottom: 16px; }
+    .help { display: block; margin-top: 6px; color: var(--muted); font-size: .84rem; }
+    .errorlist { color: var(--err-ink); margin: 4px 0 0; padding-left: 18px; font-size: .88rem; }
+    input[type="text"], input[type="number"], input[type="file"], select {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: 8px; font: inherit; background: #fff;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
+    .btn {
+      appearance: none; border: 0; background: var(--accent); color: #fff;
+      font: inherit; font-weight: 600; padding: 12px 18px; border-radius: 8px;
+      cursor: pointer; text-decoration: none; display: inline-block;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn.secondary { background: #e8eef4; color: var(--ink); }
+    .btn.secondary:hover { background: #d9e3ec; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    code { background: #eef2f6; padding: 2px 6px; border-radius: 4px; font-size: .88em; }
+    .section-title {
+      margin: 8px 0 14px; font-size: 1.05rem; border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <h1>PDF Digital Sign</h1>
+    </div>
+    <p class="lead">{% block lead %}Upload a signature, choose PDF paths, then place the sign on each page.{% endblock %}</p>
+
+    {% if step %}
+    <div class="steps">
+      <span class="{% if step == 1 %}active{% elif step > 1 %}done{% endif %}">1. Setup</span>
+      <span class="{% if step == 2 %}active{% elif step > 2 %}done{% endif %}">2. Position per page</span>
+      <span class="{% if step == 3 %}active{% endif %}">3. Done</span>
+    </div>
+    {% endif %}
+
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </div>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
